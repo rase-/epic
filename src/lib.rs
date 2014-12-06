@@ -21,11 +21,12 @@ fn it_works() {
                             break;
                         }
 
-                        let msg = from_utf8(&buf).unwrap_or("");
+                        let slice = buf.slice(0, count);
+                        let msg = from_utf8(slice).unwrap_or("");
 
                         println!("server got: {}", msg);
 
-                        stream.write(buf.slice(0, count));
+                        stream.write(slice);
                     }
                 })
             }
@@ -33,7 +34,8 @@ fn it_works() {
     });
 
     let mut stream = TcpStream::connect("127.0.0.1:3000");
-    stream.write(b"Hello World\r\n");
+    stream.write(b"Hello World!\r\n").unwrap();
+    println!("aoeaoeaoe");
 
     let mut buf = [0u8, ..4096];
     let count = stream.read(&mut buf);
