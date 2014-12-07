@@ -1,7 +1,12 @@
 use std::io::{TcpListener, TcpStream};
 use std::io::{Acceptor, Listener};
+use std::io::IoResult;
 use std::str::from_utf8;
 use std::collections::HashMap;
+
+pub enum Errors {
+    VersionParseError
+}
 
 pub enum RequestType {
     GET,
@@ -17,10 +22,10 @@ pub enum RequestType {
 
 #[deriving(PartialEq, PartialOrd)]
 pub enum Version {
-    HTTP_09,
-    HTTP_10,
-    HTTP_11,
-    HTTP_20
+    Http09,
+    Http10,
+    Http11,
+    Http20
 }
 
 pub struct Request {
@@ -37,11 +42,54 @@ pub const LF: u8 = b'\n';
 pub const SP: u8 = b' ';
 pub const EOL: &'static [u8] = &[CR, LF];
 
-fn read_request(stream: TcpStream) {
-    // Read first line
-    // Read header fields
-    // Read body
+enum ParserState {
+    Incomplete,
+    Read_CR,
+    EndComponent,
+    EndLine,
+    Reject
 }
+
+struct Parser {
+    buf: Vec<u8>,
+    state: ParserState
+}
+
+impl Parser {
+    fn new() -> Parser {
+        Parser { buf: Vec::new(), state: ParserState::Incomplete }
+    }
+
+    fn put(&mut self, byte: u8) {
+        match byte {
+            SP => {
+                self.state = ParserState::EndComponent;
+            }
+
+            CR => {
+                self.state = ParserState::Read_CR;
+            }
+
+            LF => {
+                self.state = ParserState::EndLine;
+            }
+
+            _ => {
+                self.buf.push(byte);
+            }
+        }
+    }
+}
+
+// fn read_request(stream: TcpStream) -> IoResult<Request> {
+//     loop {
+//         match stream.read_byte() {
+//             Err(e) => Err(e),
+//             Ok(byte) => {
+//             }
+//         }
+//     }
+// }
 
 #[test]
 fn it_works() {
