@@ -10,7 +10,9 @@ pub enum HttpError {
     ResourceParseError,
     VersionParseError,
     MalformedHeaderLineError,
-    BodyParsingError
+    BodyParsingError,
+    StatusCodeParseError,
+    StatusReasonParseError
 }
 
 #[deriving(Show)]
@@ -128,7 +130,7 @@ fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
     return method;
 }
 
-fn read_resource(stream: &mut TcpStream) -> Option<String> {
+fn read_str(stream: &mut TcpStream) -> Option<String> {
     match String::from_utf8(read_req_component(stream)) {
         Ok(s) => Some(s),
         Err(e) => None
@@ -148,9 +150,13 @@ fn read_version(stream: &mut TcpStream) -> Option<Version> {
     return version;
 }
 
+fn read_status_code(stream: &mut TcpStream) -> Option<int> {
+    return from_str::<int>(String::from_utf8(read_req_component(stream)).unwrap_or(String::new()).as_slice());
+}
+
 fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
     let maybe_method = read_request_type(stream);
-    let maybe_resource = read_resource(stream);
+    let maybe_resource = read_str(stream);
     let maybe_version = read_version(stream);
 
     if (maybe_method.is_none()) {
@@ -166,6 +172,26 @@ fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version
     }
 
     return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
+}
+
+fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
+    let maybe_version = read_version(stream);
+    let maybe_code = read_status_code(stream);
+    let maybe_reason = read_str(stream);
+
+    if (maybe_version.is_none()) {
+        return Err(HttpError::VersionParseError);
+    }
+
+    if (maybe_code.is_none()) {
+        return Err(HttpError::StatusCodeParseError);
+    }
+
+    if (maybe_reason.is_none()) {
+        return Err(HttpError::StatusReasonParseError);
+    }
+
+    return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
 }
 
 fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
@@ -224,18 +250,17 @@ fn it_works() {
                 Ok(mut stream) => spawn(proc() {
                     let req = read_request(&mut stream);
                     println!("Req: {}", req);
+
+                    // Write something back
+                    stream.write(b"HTTP/1.1 200 OK\r\n");
                 })
             }
         }
     });
 
     spawn(proc() {
-        let mut stream = TcpStream::connect("127.0.0.1:3000");
+        let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
         stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nHello\r\n").unwrap();
-
-        let mut buf = [0u8, ..4096];
-        let count = stream.read(&mut buf);
-        let msg = from_utf8(&buf).unwrap_or("");
-        println!("Client got: {}", msg);
+        println!("Client got: {}", read_status_line(&mut stream));
     });
 }
