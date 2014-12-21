@@ -8,7 +8,8 @@ use std::collections::HashMap;
 pub enum HttpError {
     MethodParseError,
     ResourceParseError,
-    VersionParseError
+    VersionParseError,
+    MalformedHeaderLineError
 }
 
 #[deriving(Show)]
@@ -167,6 +168,29 @@ fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version
     return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
 }
 
+fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
+    let mut headers = HashMap::new();
+    loop {
+        let mut header_component = read_req_component(stream);
+        header_component.pop(); // Remove the ':' character
+        let key = String::from_utf8(header_component).unwrap_or(String::new());
+
+        // Empty line read
+        if key.len() == 0 {
+            break;
+        }
+
+        let val_component = String::from_utf8(read_req_component(stream)).unwrap_or(String::new());
+        if (val_component.len() == 0) {
+            return Err(HttpError::MalformedHeaderLineError);
+        }
+
+        headers.insert(key, val_component);
+    }
+
+    return Ok(headers);
+}
+
 #[test]
 fn it_works() {
     let tcp_listener = TcpListener::bind("127.0.0.1:3000");
@@ -178,10 +202,11 @@ fn it_works() {
             match opt_stream {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
-                    loop {
-                        let res = read_req_line(&mut stream);
-                        println!("Parsed: {}", res);
-                    }
+                    let req_line = read_req_line(&mut stream);
+                    println!("Req line: {}", req_line);
+
+                    let headers = read_headers(&mut stream);
+                    println!("Headers: {}", headers);
                 })
             }
         }
@@ -189,7 +214,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000");
-        stream.write(b"GET /index.html HTTP/1.1\r\n").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/html\r\n\r\n").unwrap();
 
         let mut buf = [0u8, ..4096];
         let count = stream.read(&mut buf);
