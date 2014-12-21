@@ -9,7 +9,8 @@ pub enum HttpError {
     MethodParseError,
     ResourceParseError,
     VersionParseError,
-    MalformedHeaderLineError
+    MalformedHeaderLineError,
+    BodyParsingError
 }
 
 #[deriving(Show)]
@@ -191,6 +192,10 @@ fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpE
     return Ok(headers);
 }
 
+fn read_body(stream: &mut TcpStream) -> String {
+    String::from_utf8(read_req_component(stream)).unwrap_or(String::new())
+}
+
 #[test]
 fn it_works() {
     let tcp_listener = TcpListener::bind("127.0.0.1:3000");
@@ -207,6 +212,9 @@ fn it_works() {
 
                     let headers = read_headers(&mut stream);
                     println!("Headers: {}", headers);
+
+                    let body = read_body(&mut stream);
+                    println!("Body: {}", body);
                 })
             }
         }
@@ -214,7 +222,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000");
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/html\r\n\r\n").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nHello\r\n").unwrap();
 
         let mut buf = [0u8, ..4096];
         let count = stream.read(&mut buf);
