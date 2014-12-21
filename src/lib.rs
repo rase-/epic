@@ -4,10 +4,12 @@ use std::io::IoResult;
 use std::str::from_utf8;
 use std::collections::HashMap;
 
+#[deriving(Show)]
 pub enum Errors {
     VersionParseError
 }
 
+#[deriving(Show)]
 pub enum RequestType {
     GET,
     HEAD,
@@ -20,7 +22,7 @@ pub enum RequestType {
     PATCH
 }
 
-#[deriving(PartialEq, PartialOrd)]
+#[deriving(PartialEq, PartialOrd, Show)]
 pub enum Version {
     Http09,
     Http10,
@@ -28,6 +30,7 @@ pub enum Version {
     Http20
 }
 
+#[deriving(Show)]
 pub struct Request {
     pub method: RequestType,
     pub version: Version,
@@ -42,6 +45,7 @@ pub const LF: u8 = b'\n';
 pub const SP: u8 = b' ';
 pub const EOL: &'static [u8] = &[CR, LF];
 
+#[deriving(Show)]
 enum ParserState {
     Incomplete,
     Read_CR,
@@ -50,6 +54,7 @@ enum ParserState {
     Reject
 }
 
+#[deriving(Show)]
 struct Parser {
     buf: Vec<u8>,
     state: ParserState
@@ -71,7 +76,10 @@ impl Parser {
             }
 
             LF => {
-                self.state = ParserState::EndLine;
+                match self.state {
+                    ParserState::Read_CR => self.state = ParserState::EndLine,
+                    _ => self.state = ParserState::Reject
+                }
             }
 
             _ => {
@@ -81,15 +89,23 @@ impl Parser {
     }
 }
 
-// fn read_request(stream: TcpStream) -> IoResult<Request> {
-//     loop {
-//         match stream.read_byte() {
-//             Err(e) => Err(e),
-//             Ok(byte) => {
-//             }
-//         }
-//     }
-// }
+fn read_request(stream: &mut TcpStream) -> Vec<u8> {
+    let mut parser = Parser::new();
+
+    loop {
+        let byte = stream.read_byte().unwrap();
+        parser.put(byte);
+        match parser.state {
+            ParserState::Reject => { panic!("Failed parsing"); }
+            ParserState::EndComponent => { break; }
+            ParserState::EndLine => { break; }
+            _ => { continue; }
+        }
+    }
+
+    println!("Parser result: {}", parser.buf);
+    return parser.buf;
+}
 
 #[test]
 fn it_works() {
@@ -103,18 +119,11 @@ fn it_works() {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
                     loop {
-                        let mut buf = [0u8, ..4096];
-                        let count = stream.read(&mut buf).unwrap_or(0);
+                        let res = read_request(&mut stream);
+                        let slice = res.as_slice();
+                        println!("Parsed: {}", from_utf8(slice).unwrap_or(""));
 
-                        if 0 == count {
-                            break;
-                        }
-
-                        let slice = buf.slice(0, count);
-                        let msg = from_utf8(slice).unwrap_or("");
-
-                        println!("server got: {}", msg);
-
+                        // Emitting to client
                         stream.write(slice);
                     }
                 })
@@ -124,7 +133,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000");
-        stream.write(b"Hello World!\r\n").unwrap();
+        stream.write(b"Content-Type: text/html\r\n").unwrap();
 
         let mut buf = [0u8, ..4096];
         let count = stream.read(&mut buf);
