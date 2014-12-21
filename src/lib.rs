@@ -39,7 +39,6 @@ pub struct Request {
     pub method: RequestType,
     pub version: Version,
     pub resource: String,
-    pub host: String,
     pub headers: HashMap<String, String>,
     pub body: String
 }
@@ -196,6 +195,22 @@ fn read_body(stream: &mut TcpStream) -> String {
     String::from_utf8(read_req_component(stream)).unwrap_or(String::new())
 }
 
+fn read_request(stream: &mut TcpStream) -> Request {
+    let (method, resource, version) = read_req_line(stream).unwrap();
+    let headers = read_headers(stream).unwrap();
+    let body = read_body(stream);
+
+    let req = Request {
+        method: method,
+        version: version,
+        resource: resource,
+        headers: headers,
+        body: body
+    };
+
+    return req;
+}
+
 #[test]
 fn it_works() {
     let tcp_listener = TcpListener::bind("127.0.0.1:3000");
@@ -207,14 +222,8 @@ fn it_works() {
             match opt_stream {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
-                    let req_line = read_req_line(&mut stream);
-                    println!("Req line: {}", req_line);
-
-                    let headers = read_headers(&mut stream);
-                    println!("Headers: {}", headers);
-
-                    let body = read_body(&mut stream);
-                    println!("Body: {}", body);
+                    let req = read_request(&mut stream);
+                    println!("Req: {}", req);
                 })
             }
         }
