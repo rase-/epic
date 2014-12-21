@@ -5,7 +5,9 @@ use std::str::from_utf8;
 use std::collections::HashMap;
 
 #[deriving(Show)]
-pub enum Errors {
+pub enum HttpError {
+    MethodParseError,
+    ResourceParseError,
     VersionParseError
 }
 
@@ -35,6 +37,7 @@ pub struct Request {
     pub method: RequestType,
     pub version: Version,
     pub resource: String,
+    pub host: String,
     pub headers: HashMap<String, String>,
     pub body: String
 }
@@ -89,7 +92,7 @@ impl Parser {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Vec<u8> {
+fn read_req_component(stream: &mut TcpStream) -> Vec<u8> {
     let mut parser = Parser::new();
 
     loop {
@@ -103,8 +106,65 @@ fn read_request(stream: &mut TcpStream) -> Vec<u8> {
         }
     }
 
-    println!("Parser result: {}", parser.buf);
     return parser.buf;
+}
+
+fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
+    let component = read_req_component(stream);
+    let method = match component.as_slice() {
+        b"GET" => Some(RequestType::GET),
+        b"HEAD" => Some(RequestType::HEAD),
+        b"POST" => Some(RequestType::POST),
+        b"PUT" => Some(RequestType::PUT),
+        b"DELETE" => Some(RequestType::DELETE),
+        b"TRACE" => Some(RequestType::TRACE),
+        b"OPTIONS" => Some(RequestType::OPTIONS),
+        b"CONNECT" => Some(RequestType::CONNECT),
+        b"PATCH" => Some(RequestType::PATCH),
+        _ => None
+    };
+
+    return method;
+}
+
+fn read_resource(stream: &mut TcpStream) -> Option<String> {
+    match String::from_utf8(read_req_component(stream)) {
+        Ok(s) => Some(s),
+        Err(e) => None
+    }
+}
+
+fn read_version(stream: &mut TcpStream) -> Option<Version> {
+    let component = read_req_component(stream);
+    let version = match component.as_slice() {
+        b"HTTP/0.9" => Some(Version::Http09),
+        b"HTTP/1.0" => Some(Version::Http10),
+        b"HTTP/1.1" => Some(Version::Http11),
+        b"Http/2.0" => Some(Version::Http20),
+        _ => None
+    };
+
+    return version;
+}
+
+fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
+    let maybe_method = read_request_type(stream);
+    let maybe_resource = read_resource(stream);
+    let maybe_version = read_version(stream);
+
+    if (maybe_method.is_none()) {
+        return Err(HttpError::MethodParseError);
+    }
+
+    if (maybe_resource.is_none()) {
+        return Err(HttpError::ResourceParseError);
+    }
+
+    if (maybe_version.is_none()) {
+        return Err(HttpError::VersionParseError);
+    }
+
+    return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
 }
 
 #[test]
@@ -119,12 +179,8 @@ fn it_works() {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
                     loop {
-                        let res = read_request(&mut stream);
-                        let slice = res.as_slice();
-                        println!("Parsed: {}", from_utf8(slice).unwrap_or(""));
-
-                        // Emitting to client
-                        stream.write(slice);
+                        let res = read_req_line(&mut stream);
+                        println!("Parsed: {}", res);
                     }
                 })
             }
@@ -133,7 +189,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000");
-        stream.write(b"Content-Type: text/html\r\n").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\n").unwrap();
 
         let mut buf = [0u8, ..4096];
         let count = stream.read(&mut buf);
