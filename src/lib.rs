@@ -156,15 +156,15 @@ impl Parser {
         let maybe_resource = self.read_str(stream);
         let maybe_version = self.read_version(stream);
     
-        if (maybe_method.is_none()) {
+        if maybe_method.is_none() {
             return Err(HttpError::MethodParseError);
         }
     
-        if (maybe_resource.is_none()) {
+        if maybe_resource.is_none() {
             return Err(HttpError::ResourceParseError);
         }
     
-        if (maybe_version.is_none()) {
+        if maybe_version.is_none() {
             return Err(HttpError::VersionParseError);
         }
     
@@ -176,15 +176,15 @@ impl Parser {
         let maybe_code = self.read_status_code(stream);
         let maybe_reason = self.read_str(stream);
     
-        if (maybe_version.is_none()) {
+        if maybe_version.is_none() {
             return Err(HttpError::VersionParseError);
         }
     
-        if (maybe_code.is_none()) {
+        if maybe_code.is_none() {
             return Err(HttpError::StatusCodeParseError);
         }
     
-        if (maybe_reason.is_none()) {
+        if maybe_reason.is_none() {
             return Err(HttpError::StatusReasonParseError);
         }
     
@@ -204,7 +204,7 @@ impl Parser {
             }
     
             let val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
-            if (val_component.len() == 0) {
+            if val_component.len() == 0 {
                 return Err(HttpError::MalformedHeaderLineError);
             }
     
