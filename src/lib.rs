@@ -93,149 +93,153 @@ impl Parser {
             }
         }
     }
-}
 
-fn read_req_component(stream: &mut TcpStream) -> Vec<u8> {
-    let mut parser = Parser::new();
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+        self.state = ParserState::Incomplete;
 
-    loop {
-        let byte = stream.read_byte().unwrap();
-        parser.put(byte);
-        match parser.state {
-            ParserState::Reject => { panic!("Failed parsing"); }
-            ParserState::EndComponent => { break; }
-            ParserState::EndLine => { break; }
-            _ => { continue; }
-        }
-    }
-
-    return parser.buf;
-}
-
-fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
-    let component = read_req_component(stream);
-    let method = match component.as_slice() {
-        b"GET" => Some(RequestType::GET),
-        b"HEAD" => Some(RequestType::HEAD),
-        b"POST" => Some(RequestType::POST),
-        b"PUT" => Some(RequestType::PUT),
-        b"DELETE" => Some(RequestType::DELETE),
-        b"TRACE" => Some(RequestType::TRACE),
-        b"OPTIONS" => Some(RequestType::OPTIONS),
-        b"CONNECT" => Some(RequestType::CONNECT),
-        b"PATCH" => Some(RequestType::PATCH),
-        _ => None
-    };
-
-    return method;
-}
-
-fn read_str(stream: &mut TcpStream) -> Option<String> {
-    match String::from_utf8(read_req_component(stream)) {
-        Ok(s) => Some(s),
-        Err(e) => None
-    }
-}
-
-fn read_version(stream: &mut TcpStream) -> Option<Version> {
-    let component = read_req_component(stream);
-    let version = match component.as_slice() {
-        b"HTTP/0.9" => Some(Version::Http09),
-        b"HTTP/1.0" => Some(Version::Http10),
-        b"HTTP/1.1" => Some(Version::Http11),
-        b"Http/2.0" => Some(Version::Http20),
-        _ => None
-    };
-
-    return version;
-}
-
-fn read_status_code(stream: &mut TcpStream) -> Option<int> {
-    return from_str::<int>(String::from_utf8(read_req_component(stream)).unwrap_or(String::new()).as_slice());
-}
-
-fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
-    let maybe_method = read_request_type(stream);
-    let maybe_resource = read_str(stream);
-    let maybe_version = read_version(stream);
-
-    if (maybe_method.is_none()) {
-        return Err(HttpError::MethodParseError);
-    }
-
-    if (maybe_resource.is_none()) {
-        return Err(HttpError::ResourceParseError);
-    }
-
-    if (maybe_version.is_none()) {
-        return Err(HttpError::VersionParseError);
-    }
-
-    return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
-}
-
-fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
-    let maybe_version = read_version(stream);
-    let maybe_code = read_status_code(stream);
-    let maybe_reason = read_str(stream);
-
-    if (maybe_version.is_none()) {
-        return Err(HttpError::VersionParseError);
-    }
-
-    if (maybe_code.is_none()) {
-        return Err(HttpError::StatusCodeParseError);
-    }
-
-    if (maybe_reason.is_none()) {
-        return Err(HttpError::StatusReasonParseError);
-    }
-
-    return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
-}
-
-fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
-    let mut headers = HashMap::new();
-    loop {
-        let mut header_component = read_req_component(stream);
-        header_component.pop(); // Remove the ':' character
-        let key = String::from_utf8(header_component).unwrap_or(String::new());
-
-        // Empty line read
-        if key.len() == 0 {
-            break;
+        loop {
+            let byte = stream.read_byte().unwrap();
+            self.put(byte);
+            match self.state {
+                ParserState::Reject => { panic!("Failed parsing"); }
+                ParserState::EndComponent => { break; }
+                ParserState::EndLine => { break; }
+                _ => { continue; }
+            }
         }
 
-        let val_component = String::from_utf8(read_req_component(stream)).unwrap_or(String::new());
-        if (val_component.len() == 0) {
-            return Err(HttpError::MalformedHeaderLineError);
-        }
-
-        headers.insert(key, val_component);
+        return self.buf.clone();
     }
-
-    return Ok(headers);
+    
+    fn read_request_type(&mut self, stream: &mut TcpStream) -> Option<RequestType> {
+        let component = self.read_req_component(stream);
+        let method = match component.as_slice() {
+            b"GET" => Some(RequestType::GET),
+            b"HEAD" => Some(RequestType::HEAD),
+            b"POST" => Some(RequestType::POST),
+            b"PUT" => Some(RequestType::PUT),
+            b"DELETE" => Some(RequestType::DELETE),
+            b"TRACE" => Some(RequestType::TRACE),
+            b"OPTIONS" => Some(RequestType::OPTIONS),
+            b"CONNECT" => Some(RequestType::CONNECT),
+            b"PATCH" => Some(RequestType::PATCH),
+            _ => None
+        };
+    
+        return method;
+    }
+    
+    fn read_str(&mut self, stream: &mut TcpStream) -> Option<String> {
+        match String::from_utf8(self.read_req_component(stream)) {
+            Ok(s) => Some(s),
+            Err(e) => None
+        }
+    }
+    
+    fn read_version(&mut self, stream: &mut TcpStream) -> Option<Version> {
+        let component = self.read_req_component(stream);
+        let version = match component.as_slice() {
+            b"HTTP/0.9" => Some(Version::Http09),
+            b"HTTP/1.0" => Some(Version::Http10),
+            b"HTTP/1.1" => Some(Version::Http11),
+            b"Http/2.0" => Some(Version::Http20),
+            _ => None
+        };
+    
+        return version;
+    }
+    
+    fn read_status_code(&mut self, stream: &mut TcpStream) -> Option<int> {
+        return from_str::<int>(String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new()).as_slice());
+    }
+    
+    fn read_req_line(&mut self, stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
+        let maybe_method = self.read_request_type(stream);
+        let maybe_resource = self.read_str(stream);
+        let maybe_version = self.read_version(stream);
+    
+        if (maybe_method.is_none()) {
+            return Err(HttpError::MethodParseError);
+        }
+    
+        if (maybe_resource.is_none()) {
+            return Err(HttpError::ResourceParseError);
+        }
+    
+        if (maybe_version.is_none()) {
+            return Err(HttpError::VersionParseError);
+        }
+    
+        return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
+    }
+    
+    fn read_status_line(&mut self, stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
+        let maybe_version = self.read_version(stream);
+        let maybe_code = self.read_status_code(stream);
+        let maybe_reason = self.read_str(stream);
+    
+        if (maybe_version.is_none()) {
+            return Err(HttpError::VersionParseError);
+        }
+    
+        if (maybe_code.is_none()) {
+            return Err(HttpError::StatusCodeParseError);
+        }
+    
+        if (maybe_reason.is_none()) {
+            return Err(HttpError::StatusReasonParseError);
+        }
+    
+        return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
+    }
+    
+    fn read_headers(&mut self, stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
+        let mut headers = HashMap::new();
+        loop {
+            let mut header_component = self.read_req_component(stream);
+            header_component.pop(); // Remove the ':' character
+            let key = String::from_utf8(header_component).unwrap_or(String::new());
+    
+            // Empty line read
+            if key.len() == 0 {
+                break;
+            }
+    
+            let val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
+            if (val_component.len() == 0) {
+                return Err(HttpError::MalformedHeaderLineError);
+            }
+    
+            headers.insert(key, val_component);
+        }
+    
+        return Ok(headers);
+    }
+    
+    fn read_body(&mut self, stream: &mut TcpStream) -> String {
+        String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new())
+    }
+    
+    fn read_request(&mut self, stream: &mut TcpStream) -> Request {
+        let (method, resource, version) = self.read_req_line(stream).unwrap();
+        let headers = self.read_headers(stream).unwrap();
+        let body = self.read_body(stream);
+    
+        let req = Request {
+            method: method,
+            version: version,
+            resource: resource,
+            headers: headers,
+            body: body
+        };
+    
+        return req;
+    }
 }
 
-fn read_body(stream: &mut TcpStream) -> String {
-    String::from_utf8(read_req_component(stream)).unwrap_or(String::new())
-}
 
-fn read_request(stream: &mut TcpStream) -> Request {
-    let (method, resource, version) = read_req_line(stream).unwrap();
-    let headers = read_headers(stream).unwrap();
-    let body = read_body(stream);
-
-    let req = Request {
-        method: method,
-        version: version,
-        resource: resource,
-        headers: headers,
-        body: body
-    };
-
-    return req;
-}
 
 #[test]
 fn it_works() {
@@ -248,11 +252,12 @@ fn it_works() {
             match opt_stream {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
-                    let req = read_request(&mut stream);
+                    let mut parser = Parser::new();
+                    let req = parser.read_request(&mut stream);
                     println!("Req: {}", req);
 
                     // Write something back
-                    stream.write(b"HTTP/1.1 200 OK\r\n");
+                    stream.write(b"HTTP/1.1 200 VERY OK\r\n");
                 })
             }
         }
@@ -261,6 +266,7 @@ fn it_works() {
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
         stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nHello\r\n").unwrap();
-        println!("Client got: {}", read_status_line(&mut stream));
+        let mut parser = Parser::new();
+        println!("Client got: {}", parser.read_status_line(&mut stream));
     });
 }
