@@ -115,7 +115,7 @@ impl Parser {
     
     fn read_request_type(&mut self, stream: &mut TcpStream) -> Option<RequestType> {
         let component = self.read_req_component(stream);
-        let method = match component.as_slice() {
+        return match component.as_slice() {
             b"GET" => Some(RequestType::GET),
             b"HEAD" => Some(RequestType::HEAD),
             b"POST" => Some(RequestType::POST),
@@ -127,8 +127,6 @@ impl Parser {
             b"PATCH" => Some(RequestType::PATCH),
             _ => None
         };
-    
-        return method;
     }
     
     fn read_str(&mut self, stream: &mut TcpStream) -> Option<String> {
@@ -140,15 +138,13 @@ impl Parser {
     
     fn read_version(&mut self, stream: &mut TcpStream) -> Option<Version> {
         let component = self.read_req_component(stream);
-        let version = match component.as_slice() {
+        return match component.as_slice() {
             b"HTTP/0.9" => Some(Version::Http09),
             b"HTTP/1.0" => Some(Version::Http10),
             b"HTTP/1.1" => Some(Version::Http11),
             b"Http/2.0" => Some(Version::Http20),
             _ => None
         };
-    
-        return version;
     }
     
     fn read_status_code(&mut self, stream: &mut TcpStream) -> Option<int> {
@@ -227,15 +223,13 @@ impl Parser {
         let headers = self.read_headers(stream).unwrap();
         let body = self.read_body(stream);
     
-        let req = Request {
+        return Request {
             method: method,
             version: version,
             resource: resource,
             headers: headers,
             body: body
         };
-    
-        return req;
     }
 }
 
