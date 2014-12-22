@@ -63,18 +63,24 @@ enum ParserState {
 #[deriving(Show)]
 struct Parser {
     buf: Vec<u8>,
-    state: ParserState
+    state: ParserState,
+    allow_space: bool
 }
 
 impl Parser {
     fn new() -> Parser {
-        Parser { buf: Vec::new(), state: ParserState::Incomplete }
+        Parser { buf: Vec::new(), state: ParserState::Incomplete, allow_space: false }
     }
 
     fn put(&mut self, byte: u8) {
         match byte {
             SP => {
-                self.state = ParserState::EndComponent;
+                if self.allow_space {
+                    self.buf.push(byte);
+                } else {
+                    self.state = ParserState::EndComponent;
+                }
+
             }
 
             CR => {
@@ -174,8 +180,11 @@ impl Parser {
     fn read_status_line(&mut self, stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
         let maybe_version = self.read_version(stream);
         let maybe_code = self.read_status_code(stream);
+
+        self.allow_space = true;
         let maybe_reason = self.read_str(stream);
-    
+        self.allow_space = false;
+
         if maybe_version.is_none() {
             return Err(HttpError::VersionParseError);
         }
