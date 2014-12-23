@@ -217,12 +217,9 @@ impl Parser {
                 break;
             }
     
-            let mut val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
-
-            // Could be an optional space
-            if val_component.len() == 0 {
-                val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
-            }
+            self.allow_space = true;
+            let val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new()).as_slice().trim().into_string();
+            self.allow_space = false;
 
             if self.state != ParserState::EndLine {
                 // Check for optional whitespace
@@ -293,7 +290,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5 \r\n\r\nHello\r\n").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello\r\n").unwrap();
         let mut parser = Parser::new();
         println!("Client got: {}", parser.read_status_line(&mut stream));
     });
