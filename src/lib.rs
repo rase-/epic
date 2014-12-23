@@ -127,8 +127,90 @@ impl Parser {
     }
 }
 
+trait ParserT {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8>;
+}
+
+struct SPParser {
+    buf: Vec<u8>,
+    max_token_len: uint
+}
+
+impl SPParser {
+    fn new() -> SPParser {
+        SPParser { buf: Vec::new(), max_token_len: 4096u }
+    }
+}
+
+impl ParserT for SPParser {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+
+        loop {
+            let byte = stream.read_byte().unwrap();
+            if self.buf.len() >= self.max_token_len { break; }
+            match byte {
+                SP =>{ break; }
+                _ => { self.buf.push(byte); }
+            }
+        }
+
+        return self.buf.clone();
+    }
+}
+
+#[deriving(Show,PartialEq)]
+enum EOLParserState {
+    Token,
+    CR,
+    LF
+}
+
+struct EOLParser {
+    buf: Vec<u8>,
+    max_token_len: uint,
+    state: EOLParserState
+}
+
+
+
+impl EOLParser {
+    fn new() -> EOLParser {
+        EOLParser { buf: Vec::new(), max_token_len: 4096u, state: EOLParserState::Token }
+    }
+}
+
+impl ParserT for EOLParser {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+
+        loop {
+            let byte = stream.read_byte().unwrap();
+            if self.buf.len() >= self.max_token_len { break; }
+
+            match byte {
+                CR => {
+                    if self.state != EOLParserState::Token { panic!("Parse error!"); }
+                    self.state = EOLParserState::CR;
+                },
+                LF => {
+                    if self.state != EOLParserState::CR { panic!("Parse error!"); }
+                    break;
+                },
+                _ => {
+                    self.buf.push(byte);
+                }
+            }
+        }
+
+        return self.buf.clone();
+    }
+}
+
 fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
-    let mut parser = Parser::new();
+    let mut parser = SPParser::new();
     let component = parser.read_req_component(stream);
     return match component.as_slice() {
         b"GET" => Some(RequestType::GET),
@@ -144,16 +226,23 @@ fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
     };
 }
 
-fn read_str(stream: &mut TcpStream) -> Option<String> {
-    let mut parser = Parser::new();
+fn read_reason(stream: &mut TcpStream) -> Option<String> {
+    let mut parser = EOLParser::new();
     match String::from_utf8(parser.read_req_component(stream)) {
         Ok(s) => Some(s),
         Err(e) => None
     }
 }
 
-fn read_version(stream: &mut TcpStream) -> Option<Version> {
-    let mut parser = Parser::new();
+fn read_resource(stream: &mut TcpStream) -> Option<String> {
+    let mut parser = SPParser::new();
+    match String::from_utf8(parser.read_req_component(stream)) {
+        Ok(s) => Some(s),
+        Err(e) => None
+    }
+}
+
+fn read_version<T: ParserT>(stream: &mut TcpStream, parser: &mut T) -> Option<Version> {
     let component = parser.read_req_component(stream);
     return match component.as_slice() {
         b"HTTP/0.9" => Some(Version::Http09),
@@ -165,16 +254,14 @@ fn read_version(stream: &mut TcpStream) -> Option<Version> {
 }
 
 fn read_status_code(stream: &mut TcpStream) -> Option<int> {
-    let mut parser = Parser::new();
+    let mut parser = SPParser::new();
     return from_str::<int>(String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new()).as_slice());
 }
 
 fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
-    let mut parser = Parser::new();
-
     let maybe_method = read_request_type(stream);
-    let maybe_resource = read_str(stream);
-    let maybe_version = read_version(stream);
+    let maybe_resource = read_resource(stream);
+    let maybe_version = read_version(stream, &mut EOLParser::new());
 
     if maybe_method.is_none() {
         return Err(HttpError::MethodParseError);
@@ -192,14 +279,9 @@ fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version
 }
 
 fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
-    let mut parser = Parser::new();
-
-    let maybe_version = read_version(stream);
+    let maybe_version = read_version(stream, &mut SPParser::new());
     let maybe_code = read_status_code(stream);
-
-    parser.allow_space = true;
-    let maybe_reason = read_str(stream);
-    parser.allow_space = false;
+    let maybe_reason = read_reason(stream);
 
     if maybe_version.is_none() {
         return Err(HttpError::VersionParseError);
