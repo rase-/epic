@@ -194,12 +194,104 @@ impl ParserT for EOLParser {
                 CR => {
                     if self.state != EOLParserState::Token { panic!("Parse error!"); }
                     self.state = EOLParserState::CR;
-                },
+                }
                 LF => {
                     if self.state != EOLParserState::CR { panic!("Parse error!"); }
                     break;
-                },
+                }
                 _ => {
+                    self.buf.push(byte);
+                }
+            }
+        }
+
+        return self.buf.clone();
+    }
+}
+
+struct HeaderKeyParser {
+    buf: Vec<u8>,
+    max_token_len: uint
+}
+
+impl HeaderKeyParser {
+    fn new() -> HeaderKeyParser {
+        HeaderKeyParser { buf: Vec::new(), max_token_len: 4096u }
+    }
+}
+
+impl ParserT for HeaderKeyParser {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+
+        loop {
+            let byte = stream.read_byte().unwrap();
+            if self.buf.len() >= self.max_token_len { break; }
+            match byte {
+                COLON => { break; }
+                CR => {
+                    match stream.read_byte().unwrap() {
+                        LF => { break; }
+                        _ => { panic!("Parse error!"); }
+                    }
+                }
+                _ => { self.buf.push(byte); }
+            }
+        }
+
+        return self.buf.clone();
+    }
+}
+
+#[deriving(Show,PartialEq)]
+enum HeaderValParserState {
+    Token,
+    OptionalWhitespace,
+    CR,
+    LF
+}
+
+struct HeaderValParser {
+    buf: Vec<u8>,
+    max_token_len: uint,
+    state: HeaderValParserState
+}
+
+
+
+impl HeaderValParser {
+    fn new() -> HeaderValParser {
+        HeaderValParser { buf: Vec::new(), max_token_len: 4096u, state: HeaderValParserState::OptionalWhitespace }
+    }
+}
+
+impl ParserT for HeaderValParser {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+
+        loop {
+            let byte = stream.read_byte().unwrap();
+            if self.buf.len() >= self.max_token_len { break; }
+
+            match byte {
+                CR => {
+                    if self.state != HeaderValParserState::Token { panic!("Parse error!") }
+                    self.state = HeaderValParserState::CR;
+                }
+                LF => {
+                    if self.state != HeaderValParserState::CR { panic!("Parse error!"); }
+                    break;
+                }
+                SP => {
+                    match self.state {
+                        HeaderValParserState::OptionalWhitespace => { continue; }
+                        _ => { self.buf.push(byte); }
+                    }
+                }
+                _ => {
+                    self.state = HeaderValParserState::Token;
                     self.buf.push(byte);
                 }
             }
@@ -307,28 +399,15 @@ fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), Ht
 }
 
 fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
-    let mut parser = Parser::new();
+    let mut key_parser = HeaderKeyParser::new();
+    let mut val_parser = HeaderValParser::new();
 
     let mut headers = HashMap::new();
     loop {
-        let key = String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new());
-
-        // Empty line read
-        if key.len() == 0 && parser.state == ParserState::EndLine  {
-            break;
-        }
-
-        parser.allow_space = true;
-        let val_component = String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new()).as_slice().trim().into_string();
-        parser.allow_space = false;
-
-        if parser.state != ParserState::EndLine {
-            // Check for optional whitespace
-            let optional_whitespace = parser.read_req_component(stream);
-            if optional_whitespace.len() > 0 || parser.state != ParserState::EndLine {
-                return Err(HttpError::MalformedHeaderLineError);
-            }
-        }
+        let key = String::from_utf8(key_parser.read_req_component(stream)).unwrap_or(String::new());
+        println!("key: {}", key);
+        if key.len() == 0 { break; }
+        let val_component = String::from_utf8(val_parser.read_req_component(stream)).unwrap_or(String::new()).as_slice().trim().into_string();
 
         headers.insert(key, val_component);
     }
