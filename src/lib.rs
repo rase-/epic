@@ -42,7 +42,7 @@ pub struct Request {
     pub version: Version,
     pub resource: String,
     pub headers: HashMap<String, String>,
-    pub body: String
+    pub body: Option<String>
 }
 
 // Tokens
@@ -242,7 +242,8 @@ impl Parser {
     fn read_request(&mut self, stream: &mut TcpStream) -> Request {
         let (method, resource, version) = self.read_req_line(stream).unwrap();
         let headers = self.read_headers(stream).unwrap();
-        let body = self.read_body(stream);
+        
+        let body = if headers.contains_key("Content-Length") { Some(self.read_body(stream)) } else { None };
     
         return Request {
             method: method,
