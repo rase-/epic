@@ -49,9 +49,9 @@ pub struct Request {
 pub const CR: u8 = b'\r';
 pub const LF: u8 = b'\n';
 pub const SP: u8 = b' ';
-pub const EOL: &'static [u8] = &[CR, LF];
+pub const COLON: u8 = b':';
 
-#[deriving(Show)]
+#[deriving(Show, PartialEq)]
 enum ParserState {
     Incomplete,
     Read_CR,
@@ -81,6 +81,10 @@ impl Parser {
                     self.state = ParserState::EndComponent;
                 }
 
+            }
+
+            COLON => {
+                self.state = ParserState::EndComponent;
             }
 
             CR => {
@@ -203,18 +207,26 @@ impl Parser {
     fn read_headers(&mut self, stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
         let mut headers = HashMap::new();
         loop {
-            let mut header_component = self.read_req_component(stream);
-            header_component.pop(); // Remove the ':' character
-            let key = String::from_utf8(header_component).unwrap_or(String::new());
+            let key = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
     
             // Empty line read
-            if key.len() == 0 {
+            if key.len() == 0 && self.state == ParserState::EndLine  {
                 break;
             }
     
-            let val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
+            let mut val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
+
+            // Could be an optional space
             if val_component.len() == 0 {
-                return Err(HttpError::MalformedHeaderLineError);
+                val_component = String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new());
+            }
+
+            if self.state != ParserState::EndLine {
+                // Check for optional whitespace
+                let optional_whitespace = self.read_req_component(stream);
+                if optional_whitespace.len() > 0 || self.state != ParserState::EndLine {
+                    return Err(HttpError::MalformedHeaderLineError);
+                }
             }
     
             headers.insert(key, val_component);
@@ -268,7 +280,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nHello\r\n").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5 \r\n\r\nHello\r\n").unwrap();
         let mut parser = Parser::new();
         println!("Client got: {}", parser.read_status_line(&mut stream));
     });
