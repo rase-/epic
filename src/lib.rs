@@ -5,7 +5,7 @@ use std::str::from_utf8;
 use std::collections::HashMap;
 
 #[deriving(Show)]
-pub enum HttpError {
+pub enum Error {
     MethodParseError,
     ResourceParseError,
     VersionParseError,
@@ -317,47 +317,47 @@ fn read_status_code(stream: &mut TcpStream) -> Option<int> {
     }
 }
 
-fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
+fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), Error> {
     let maybe_method = read_request_type(stream);
     let maybe_resource = read_resource(stream);
     let maybe_version = read_version(stream, &mut EOLParser::new());
 
     if maybe_method.is_none() {
-        return Err(HttpError::MethodParseError);
+        return Err(Error::MethodParseError);
     }
 
     if maybe_resource.is_none() {
-        return Err(HttpError::ResourceParseError);
+        return Err(Error::ResourceParseError);
     }
 
     if maybe_version.is_none() {
-        return Err(HttpError::VersionParseError);
+        return Err(Error::VersionParseError);
     }
 
     return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
 }
 
-fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), HttpError> {
+fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), Error> {
     let maybe_version = read_version(stream, &mut SPParser::new());
     let maybe_code = read_status_code(stream);
     let maybe_reason = read_reason(stream);
 
     if maybe_version.is_none() {
-        return Err(HttpError::VersionParseError);
+        return Err(Error::VersionParseError);
     }
 
     if maybe_code.is_none() {
-        return Err(HttpError::StatusCodeParseError);
+        return Err(Error::StatusCodeParseError);
     }
 
     if maybe_reason.is_none() {
-        return Err(HttpError::StatusReasonParseError);
+        return Err(Error::StatusReasonParseError);
     }
 
     return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
 }
 
-fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpError> {
+fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, Error> {
     let mut key_parser = HeaderKeyParser::new();
     let mut val_parser = HeaderValParser::new();
 
