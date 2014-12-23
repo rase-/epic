@@ -45,6 +45,15 @@ pub struct Request {
     pub body: Option<String>
 }
 
+#[deriving(Show)]
+pub struct Response {
+    pub version: Version,
+    pub status_code: int,
+    pub reason: String,
+    pub headers: HashMap<String, String>,
+    pub body: Option<String>
+}
+
 // Tokens
 pub const CR: u8 = b'\r';
 pub const LF: u8 = b'\n';
@@ -398,6 +407,36 @@ fn read_request(stream: &mut TcpStream) -> Request {
     };
 }
 
+fn read_response(stream: &mut TcpStream) -> Response {
+    let (version, status_code, reason) = read_status_line(stream).unwrap();
+    let headers = read_headers(stream).unwrap();
+  
+    let body = match headers.get("Content-Length") {
+        None => {
+            match headers.get("Transfer-Encoding") {
+                None => None,
+                Some(v) => Some(read_body(stream, 4096))
+            }
+        }
+
+        Some(len_str) => {
+            match from_str::<uint>(len_str.as_slice()) {
+                None => None,
+                Some(len) => Some(read_body(stream, len))
+            }
+        }
+    };
+
+    return Response {
+        version: version,
+        status_code: status_code,
+        reason: reason,
+        headers: headers,
+        body: body
+    };
+
+}
+
 #[test]
 fn it_works() {
     let tcp_listener = TcpListener::bind("127.0.0.1:3000");
@@ -413,7 +452,7 @@ fn it_works() {
                     println!("Req: {}", req);
 
                     // Write something back
-                    stream.write(b"HTTP/1.1 200 VERY OK\r\n");
+                    stream.write(b"HTTP/1.1 200 VERY OK\r\nContent-Type: text/plain\r\nContent-Length:5\r\n\r\nHello");
                 })
             }
         }
@@ -421,7 +460,7 @@ fn it_works() {
 
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello\r\n").unwrap();
-        println!("Client got: {}", read_status_line(&mut stream));
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
+        println!("Client got: {}", read_response(&mut stream));
     });
 }
