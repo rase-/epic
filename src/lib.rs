@@ -243,9 +243,16 @@ impl Parser {
     fn read_request(&mut self, stream: &mut TcpStream) -> Request {
         let (method, resource, version) = self.read_req_line(stream).unwrap();
         let headers = self.read_headers(stream).unwrap();
-       
+      
+        let max_len = self.max_token_len;
         let body = match headers.get("Content-Length") {
-            None => None,
+            None => {
+                match headers.get("Transfer-Encoding") {
+                    None => None,
+                    Some(v) => Some(self.read_body(stream, max_len))
+                }
+            }
+
             Some(len_str) => {
                 match from_str::<uint>(len_str.as_slice()) {
                     None => None,
