@@ -51,83 +51,7 @@ pub const LF: u8 = b'\n';
 pub const SP: u8 = b' ';
 pub const COLON: u8 = b':';
 
-#[deriving(Show, PartialEq)]
-enum ParserState {
-    Incomplete,
-    Read_CR,
-    EndComponent,
-    EndLine,
-    Reject
-}
-
-#[deriving(Show)]
-struct Parser {
-    buf: Vec<u8>,
-    state: ParserState,
-    allow_space: bool,
-    max_token_len: uint
-}
-
-impl Parser {
-    fn new() -> Parser {
-        Parser { buf: Vec::new(), state: ParserState::Incomplete, allow_space: false, max_token_len: 4096 }
-    }
-
-    fn put(&mut self, byte: u8) {
-        match byte {
-            SP => {
-                if self.allow_space {
-                    self.buf.push(byte);
-                } else {
-                    self.state = ParserState::EndComponent;
-                }
-
-            }
-
-            COLON => {
-                self.state = ParserState::EndComponent;
-            }
-
-            CR => {
-                self.state = ParserState::Read_CR;
-            }
-
-            LF => {
-                match self.state {
-                    ParserState::Read_CR => self.state = ParserState::EndLine,
-                    _ => self.state = ParserState::Reject
-                }
-            }
-
-            _ => {
-                self.buf.push(byte);
-            }
-        }
-    }
-
-    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
-        // Reset parser state
-        self.buf.clear();
-        self.state = ParserState::Incomplete;
-
-        loop {
-            if self.buf.len() >= self.max_token_len { break; }
-
-            let byte = stream.read_byte().unwrap();
-            self.put(byte);
-            match self.state {
-                ParserState::Reject => { panic!("Failed parsing"); }
-                ParserState::EndComponent => { break; }
-                ParserState::EndLine => { break; }
-                _ => { continue; }
-            }
-        }
-
-        return self.buf.clone();
-    }
-}
-
-trait ParserT {
+trait Parser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8>;
 }
 
@@ -142,7 +66,7 @@ impl SPParser {
     }
 }
 
-impl ParserT for SPParser {
+impl Parser for SPParser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
         // Reset parser state
         self.buf.clear();
@@ -181,7 +105,7 @@ impl EOLParser {
     }
 }
 
-impl ParserT for EOLParser {
+impl Parser for EOLParser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
         // Reset parser state
         self.buf.clear();
@@ -220,7 +144,7 @@ impl HeaderKeyParser {
     }
 }
 
-impl ParserT for HeaderKeyParser {
+impl Parser for HeaderKeyParser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
         // Reset parser state
         self.buf.clear();
@@ -266,7 +190,7 @@ impl HeaderValParser {
     }
 }
 
-impl ParserT for HeaderValParser {
+impl Parser for HeaderValParser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
         // Reset parser state
         self.buf.clear();
@@ -312,7 +236,7 @@ impl BodyParser {
     }
 }
 
-impl ParserT for BodyParser {
+impl Parser for BodyParser {
      fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
         // Reset parser state
         self.buf.clear();
@@ -360,7 +284,7 @@ fn read_resource(stream: &mut TcpStream) -> Option<String> {
     }
 }
 
-fn read_version<T: ParserT>(stream: &mut TcpStream, parser: &mut T) -> Option<Version> {
+fn read_version<T: Parser>(stream: &mut TcpStream, parser: &mut T) -> Option<Version> {
     let component = parser.read_req_component(stream);
     return match component.as_slice() {
         b"HTTP/0.9" => Some(Version::Http09),
@@ -485,7 +409,6 @@ fn it_works() {
             match opt_stream {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => spawn(proc() {
-                    let mut parser = Parser::new();
                     let req = read_request(&mut stream);
                     println!("Req: {}", req);
 
@@ -499,7 +422,6 @@ fn it_works() {
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
         stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello\r\n").unwrap();
-        let mut parser = Parser::new();
         println!("Client got: {}", read_status_line(&mut stream));
     });
 }
