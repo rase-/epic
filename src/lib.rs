@@ -255,7 +255,15 @@ fn read_version<T: ParserT>(stream: &mut TcpStream, parser: &mut T) -> Option<Ve
 
 fn read_status_code(stream: &mut TcpStream) -> Option<int> {
     let mut parser = SPParser::new();
-    return from_str::<int>(String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new()).as_slice());
+    match from_str::<int>(String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new()).as_slice()) {
+        Some(num) => {
+            match num.to_string().len() {
+                3 => Some(num),
+                _ => None
+            }
+        }
+        None => None
+    }
 }
 
 fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HttpError> {
