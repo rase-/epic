@@ -301,6 +301,32 @@ impl ParserT for HeaderValParser {
     }
 }
 
+struct BodyParser {
+    buf: Vec<u8>,
+    body_len: uint
+}
+
+impl BodyParser {
+    fn new(body_len: uint) -> BodyParser {
+        BodyParser { buf: Vec::new(), body_len: body_len }
+    }
+}
+
+impl ParserT for BodyParser {
+     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+        // Reset parser state
+        self.buf.clear();
+
+        loop {
+            let byte = stream.read_byte().unwrap();
+            self.buf.push(byte);
+            if self.buf.len() >= self.body_len { break; }
+        }
+
+        return self.buf.clone();
+    }
+}
+
 fn read_request_type(stream: &mut TcpStream) -> Option<RequestType> {
     let mut parser = SPParser::new();
     let component = parser.read_req_component(stream);
@@ -405,7 +431,6 @@ fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpE
     let mut headers = HashMap::new();
     loop {
         let key = String::from_utf8(key_parser.read_req_component(stream)).unwrap_or(String::new());
-        println!("key: {}", key);
         if key.len() == 0 { break; }
         let val_component = String::from_utf8(val_parser.read_req_component(stream)).unwrap_or(String::new()).as_slice().trim().into_string();
 
@@ -416,23 +441,19 @@ fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, HttpE
 }
 
 fn read_body(stream: &mut TcpStream, len: uint) -> String {
-    let mut parser = Parser::new();
-    parser.max_token_len = len;
+    let mut parser = BodyParser::new(len);
     String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new())
 }
 
 fn read_request(stream: &mut TcpStream) -> Request {
-    let mut parser = Parser::new();
-
     let (method, resource, version) = read_req_line(stream).unwrap();
     let headers = read_headers(stream).unwrap();
   
-    let max_len = parser.max_token_len;
     let body = match headers.get("Content-Length") {
         None => {
             match headers.get("Transfer-Encoding") {
                 None => None,
-                Some(v) => Some(read_body(stream, max_len))
+                Some(v) => Some(read_body(stream, 4096))
             }
         }
 
