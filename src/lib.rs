@@ -64,12 +64,13 @@ enum ParserState {
 struct Parser {
     buf: Vec<u8>,
     state: ParserState,
-    allow_space: bool
+    allow_space: bool,
+    max_token_len: uint
 }
 
 impl Parser {
     fn new() -> Parser {
-        Parser { buf: Vec::new(), state: ParserState::Incomplete, allow_space: false }
+        Parser { buf: Vec::new(), state: ParserState::Incomplete, allow_space: false, max_token_len: 4096 }
     }
 
     fn put(&mut self, byte: u8) {
@@ -110,6 +111,8 @@ impl Parser {
         self.state = ParserState::Incomplete;
 
         loop {
+            if self.buf.len() >= self.max_token_len { break; }
+
             let byte = stream.read_byte().unwrap();
             self.put(byte);
             match self.state {
@@ -235,15 +238,24 @@ impl Parser {
         return Ok(headers);
     }
     
-    fn read_body(&mut self, stream: &mut TcpStream) -> String {
+    fn read_body(&mut self, stream: &mut TcpStream, len: uint) -> String {
+        self.max_token_len = len;
         String::from_utf8(self.read_req_component(stream)).unwrap_or(String::new())
     }
     
     fn read_request(&mut self, stream: &mut TcpStream) -> Request {
         let (method, resource, version) = self.read_req_line(stream).unwrap();
         let headers = self.read_headers(stream).unwrap();
-        
-        let body = if headers.contains_key("Content-Length") { Some(self.read_body(stream)) } else { None };
+       
+        let body = match headers.get("Content-Length") {
+            None => None,
+            Some(len_str) => {
+                match from_str::<uint>(len_str.as_slice()) {
+                    None => None,
+                    Some(len) => Some(self.read_body(stream, len))
+                }
+            }
+        };
     
         return Request {
             method: method,
