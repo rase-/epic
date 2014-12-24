@@ -15,7 +15,7 @@ pub enum Error {
     StatusReasonParseError
 }
 
-#[deriving(Show)]
+#[deriving(Show, PartialEq)]
 pub enum RequestType {
     GET,
     HEAD,
@@ -382,18 +382,22 @@ fn read_request(stream: &mut TcpStream) -> Request {
     let (method, resource, version) = read_req_line(stream).unwrap();
     let headers = read_headers(stream).unwrap();
   
-    let body = match headers.get("Content-Length") {
-        None => {
-            match headers.get("Transfer-Encoding") {
-                None => None,
-                Some(v) => Some(read_body(stream, 4096))
+    let body = if method == RequestType::HEAD {
+        None
+    } else {
+        match headers.get("Content-Length") {
+            None => {
+                match headers.get("Transfer-Encoding") {
+                    None => None,
+                    Some(v) => Some(read_body(stream, 4096))
+                }
             }
-        }
 
-        Some(len_str) => {
-            match from_str::<uint>(len_str.as_slice()) {
-                None => None,
-                Some(len) => Some(read_body(stream, len))
+            Some(len_str) => {
+                match from_str::<uint>(len_str.as_slice()) {
+                    None => None,
+                    Some(len) => Some(read_body(stream, len))
+                }
             }
         }
     };
