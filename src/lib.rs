@@ -415,18 +415,28 @@ fn read_response(stream: &mut TcpStream) -> Response {
     let (version, status_code, reason) = read_status_line(stream).unwrap();
     let headers = read_headers(stream).unwrap();
   
-    let body = match headers.get("Content-Length") {
-        None => {
-            match headers.get("Transfer-Encoding") {
-                None => None,
-                Some(v) => Some(read_body(stream, 4096))
-            }
-        }
+    let body = match status_code {
+        204 => None,
+        304 => None,
+        _ => {
+            if status_code >= 100 && status_code < 200 {
+                None
+            } else {
+                match headers.get("Content-Length") {
+                    None => {
+                        match headers.get("Transfer-Encoding") {
+                            None => None,
+                            Some(v) => Some(read_body(stream, 4096))
+                        }
+                    }
 
-        Some(len_str) => {
-            match from_str::<uint>(len_str.as_slice()) {
-                None => None,
-                Some(len) => Some(read_body(stream, len))
+                    Some(len_str) => {
+                        match from_str::<uint>(len_str.as_slice()) {
+                            None => None,
+                            Some(len) => Some(read_body(stream, len))
+                        }
+                    }
+                }
             }
         }
     };
