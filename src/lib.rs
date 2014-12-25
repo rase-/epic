@@ -41,7 +41,7 @@ pub struct Request {
     pub method: RequestType,
     pub version: Version,
     pub resource: String,
-    pub headers: HashMap<String, String>,
+    pub headers: HashMap<String, HeaderVal>,
     pub body: Option<String>
 }
 
@@ -50,7 +50,7 @@ pub struct Response {
     pub version: Version,
     pub status_code: int,
     pub reason: String,
-    pub headers: HashMap<String, String>,
+    pub headers: HashMap<String, HeaderVal>,
     pub body: Option<String>
 }
 
@@ -59,6 +59,8 @@ pub const CR: u8 = b'\r';
 pub const LF: u8 = b'\n';
 pub const SP: u8 = b' ';
 pub const COLON: u8 = b':';
+pub const COMMA: u8 = b',';
+pub const DQUOTE: u8 = b'"';
 
 trait Parser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8>;
@@ -177,9 +179,28 @@ impl Parser for HeaderKeyParser {
     }
 }
 
+#[deriving(Show,PartialEq,Clone)]
+pub enum HeaderVal {
+    List(Vec<String>),
+    Val(String),
+    None
+}
+
+impl HeaderVal {
+    fn to_string(self) -> String {
+        match self {
+            HeaderVal::List(list) => list.iter().fold(String::new(), |mut acc, x| { acc.push_str(x.to_string().as_slice()); return acc; } ),
+            HeaderVal::Val(s) => s,
+            HeaderVal::None => String::new()
+        }
+    }
+}
+
 #[deriving(Show,PartialEq)]
 enum HeaderValParserState {
     Token,
+    TokenDelimeter,
+    QuotedString,
     OptionalWhitespace,
     CR,
     LF
@@ -188,25 +209,22 @@ enum HeaderValParserState {
 struct HeaderValParser {
     buf: Vec<u8>,
     max_token_len: uint,
+    header_val: HeaderVal,
     state: HeaderValParserState
 }
 
-
-
 impl HeaderValParser {
     fn new() -> HeaderValParser {
-        HeaderValParser { buf: Vec::new(), max_token_len: 4096u, state: HeaderValParserState::OptionalWhitespace }
+        HeaderValParser { buf: Vec::new(), max_token_len: 4096u, state: HeaderValParserState::OptionalWhitespace, header_val: HeaderVal::None }
     }
-}
 
-impl Parser for HeaderValParser {
-    fn read_req_component(&mut self, stream: &mut TcpStream) -> Vec<u8> {
+    fn read_req_component(&mut self, stream: &mut TcpStream) -> HeaderVal {
         // Reset parser state
         self.buf.clear();
 
         loop {
             let byte = stream.read_byte().unwrap();
-            if self.buf.len() >= self.max_token_len { break; }
+            if self.buf.len() >= self.max_token_len { panic!("Parse error!"); }
 
             match byte {
                 CR => {
@@ -220,8 +238,30 @@ impl Parser for HeaderValParser {
                 SP => {
                     match self.state {
                         HeaderValParserState::OptionalWhitespace => { continue; }
+                        HeaderValParserState::Token => { self.state = HeaderValParserState::TokenDelimeter; }
+                        HeaderValParserState::TokenDelimeter => { continue; }
+                        HeaderValParserState::CR => { panic!("Parse error!"); }
                         _ => { self.buf.push(byte); }
                     }
+                }
+                COMMA => {
+                    // TODO: consider other "standard" delimeters
+                    self.state = HeaderValParserState::TokenDelimeter;
+                    let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+                    self.buf.clear();
+                    let new_val = match &self.header_val {
+                        &HeaderVal::None => HeaderVal::Val(str),
+                        &HeaderVal::Val(ref v) => HeaderVal::List(vec!(v.clone(), str)),
+                        &HeaderVal::List(ref list) => { let mut new_list = list.clone(); new_list.push(str); HeaderVal::List(new_list) }
+                    };
+                    self.header_val = new_val;
+                }
+                DQUOTE => {
+                    match self.state {
+                        HeaderValParserState::QuotedString => { self.state = HeaderValParserState::Token }
+                        HeaderValParserState::CR => { panic!("Parse error!") }
+                        _ => { self.state = HeaderValParserState::QuotedString }
+                    };
                 }
                 _ => {
                     self.state = HeaderValParserState::Token;
@@ -230,7 +270,19 @@ impl Parser for HeaderValParser {
             }
         }
 
-        return self.buf.clone();
+        if self.buf.len() > 0 {
+            let val = HeaderVal::Val(String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string());
+            let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+            self.buf.clear();
+            let new_val = match &self.header_val {
+                &HeaderVal::None => HeaderVal::Val(str),
+                &HeaderVal::Val(ref v) => HeaderVal::List(vec!(v.clone(), str)),
+                &HeaderVal::List(ref list) => { let mut new_list = list.clone(); new_list.push(str); HeaderVal::List(new_list) }
+            };
+            self.header_val = new_val;
+        }
+
+        return self.header_val.clone();
     }
 }
 
@@ -357,7 +409,7 @@ fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), Er
     return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
 }
 
-fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, Error> {
+fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, Error> {
     let mut key_parser = HeaderKeyParser::new();
     let mut val_parser = HeaderValParser::new();
 
@@ -365,7 +417,7 @@ fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, String>, Error
     loop {
         let key = String::from_utf8(key_parser.read_req_component(stream)).unwrap_or(String::new());
         if key.len() == 0 { break; }
-        let val_component = String::from_utf8(val_parser.read_req_component(stream)).unwrap_or(String::new()).as_slice().trim().into_string();
+        let val_component = val_parser.read_req_component(stream);;
 
         headers.insert(key, val_component);
     }
@@ -394,7 +446,7 @@ fn read_request(stream: &mut TcpStream) -> Request {
             }
 
             Some(len_str) => {
-                match from_str::<uint>(len_str.as_slice()) {
+                match from_str::<uint>(len_str.to_string().as_slice()) {
                     None => None,
                     Some(len) => Some(read_body(stream, len))
                 }
@@ -431,7 +483,7 @@ fn read_response(stream: &mut TcpStream) -> Response {
                     }
 
                     Some(len_str) => {
-                        match from_str::<uint>(len_str.as_slice()) {
+                        match from_str::<uint>(len_str.to_string().as_slice()) {
                             None => None,
                             Some(len) => Some(read_body(stream, len))
                         }
@@ -448,7 +500,6 @@ fn read_response(stream: &mut TcpStream) -> Response {
         headers: headers,
         body: body
     };
-
 }
 
 #[test]
