@@ -108,8 +108,6 @@ struct EOLParser {
     state: EOLParserState
 }
 
-
-
 impl EOLParser {
     fn new() -> EOLParser {
         EOLParser { buf: Vec::new(), max_token_len: 4096u, state: EOLParserState::Token }
@@ -221,6 +219,8 @@ impl HeaderValParser {
     fn read_req_component(&mut self, stream: &mut TcpStream) -> HeaderVal {
         // Reset parser state
         self.buf.clear();
+        self.header_val = HeaderVal::None;
+        self.state = HeaderValParserState::OptionalWhitespace;
 
         loop {
             let byte = stream.read_byte().unwrap();
