@@ -445,10 +445,15 @@ fn read_request(stream: &mut TcpStream) -> Request {
                 }
             }
 
-            Some(len_str) => {
-                match from_str::<uint>(len_str.to_string().as_slice()) {
-                    None => None,
-                    Some(len) => Some(read_body(stream, len))
+            Some(len_field) => {
+                match len_field {
+                    &HeaderVal::Val(ref len_str) => {
+                        match from_str::<uint>(len_str.to_string().as_slice()) {
+                            None => None,
+                            Some(len) => Some(read_body(stream, len))
+                        }
+                    }
+                    _ => None
                 }
             }
         }
@@ -466,7 +471,7 @@ fn read_request(stream: &mut TcpStream) -> Request {
 fn read_response(stream: &mut TcpStream) -> Response {
     let (version, status_code, reason) = read_status_line(stream).unwrap();
     let headers = read_headers(stream).unwrap();
-  
+
     let body = match status_code {
         204 => None,
         304 => None,
@@ -482,10 +487,15 @@ fn read_response(stream: &mut TcpStream) -> Response {
                         }
                     }
 
-                    Some(len_str) => {
-                        match from_str::<uint>(len_str.to_string().as_slice()) {
-                            None => None,
-                            Some(len) => Some(read_body(stream, len))
+                    Some(len_field) => {
+                        match len_field {
+                            &HeaderVal::Val(ref len_str) => {
+                                match from_str::<uint>(len_str.to_string().as_slice()) {
+                                    None => None,
+                                    Some(len) => Some(read_body(stream, len))
+                                }
+                            }
+                            _ => None
                         }
                     }
                 }
@@ -517,15 +527,18 @@ fn it_works() {
                     println!("Req: {}", req);
 
                     // Write something back
-                    stream.write(b"HTTP/1.1 200 VERY OK\r\nContent-Type: text/plain\r\nContent-Length:5\r\n\r\nHello");
+                    stream.write(b"HTTP/1.1 200 VERY OK\r\nContent-Type: text/plain\r\nContent-Length:12\r\n\r\nHello");
+                    stream.write(b" world!");
                 })
             }
         }
     });
 
+    // Spawn client
     spawn(proc() {
         let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:5\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
+        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:12\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
+        stream.write(b" world!").unwrap();
         println!("Client got: {}", read_response(&mut stream));
     });
 }
