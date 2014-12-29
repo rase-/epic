@@ -26,11 +26,8 @@ fn main() {
         }
     });
 
-    // Spawn client
-    spawn(move || {
-        let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
-        stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:12\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
-        stream.write(b" world!").unwrap();
-        println!("Client got: {}", epic::HttpParser::read_response(&mut stream));
-    });
+   let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
+   stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:12\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
+   stream.write(b" world!").unwrap();
+   println!("Client got: {}", epic::HttpParser::read_response(&mut stream));
 }
