@@ -16,7 +16,7 @@ fn main() {
             match opt_stream {
                 Err(e) => println!("Error: {}", e),
                 Ok(mut stream) => Thread::spawn(move || {
-                    let req = epic::HttpParser::read_request(&mut stream);
+                    let req = epic::http::parser::read_request(&mut stream);
                     println!("Req: {}", req);
 
                     // Write something back
@@ -30,5 +30,5 @@ fn main() {
    let mut stream = TcpStream::connect("127.0.0.1:3000").unwrap();
    stream.write(b"GET /index.html HTTP/1.1\r\nContent-Type: text/plain\r\nContent-Length:12\r\nTransfer-Encoding: gzip, chunked\r\n\r\nHello").unwrap();
    stream.write(b" world!").unwrap();
-   println!("Client got: {}", epic::HttpParser::read_response(&mut stream));
+   println!("Client got: {}", epic::http::parser::read_response(&mut stream));
 }
