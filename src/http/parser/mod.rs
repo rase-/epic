@@ -47,7 +47,7 @@ impl Parser for SPParser {
     }
 }
 
-#[deriving(Show,PartialEq)]
+#[derive(Show,PartialEq)]
 enum EOLParserState {
     Token,
     CR,
@@ -129,7 +129,7 @@ impl Parser for HeaderKeyParser {
     }
 }
 
-#[deriving(Show,PartialEq)]
+#[derive(Show,PartialEq,Clone)]
 enum HeaderValParserState {
     Token,
     TokenDelimeter,
@@ -139,6 +139,7 @@ enum HeaderValParserState {
     LF
 }
 
+#[derive(Clone)]
 struct HeaderValParser {
     buf: Vec<u8>,
     max_token_len: usize,

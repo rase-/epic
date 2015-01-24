@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 pub mod parser;
 
-#[deriving(Show)]
+#[derive(Show)]
 pub enum Error {
     MethodParseError,
     ResourceParseError,
@@ -15,7 +15,7 @@ pub enum Error {
     StatusReasonParseError
 }
 
-#[deriving(Show, PartialEq)]
+#[derive(Show, PartialEq, Clone)]
 pub enum RequestType {
     GET,
     HEAD,
@@ -28,7 +28,7 @@ pub enum RequestType {
     PATCH
 }
 
-#[deriving(Show,PartialEq,Clone)]
+#[derive(Show,PartialEq,Clone)]
 pub enum HeaderVal {
     List(Vec<String>),
     Val(String),
@@ -47,7 +47,7 @@ impl HeaderVal {
 
 
 
-#[deriving(PartialEq, PartialOrd, Show)]
+#[derive(PartialEq, PartialOrd, Show)]
 pub enum Version {
     Http09,
     Http10,
@@ -55,7 +55,7 @@ pub enum Version {
     Http20
 }
 
-#[deriving(Show)]
+#[derive(Show)]
 pub struct Request {
     pub method: RequestType,
     pub version: Version,
@@ -64,7 +64,7 @@ pub struct Request {
     pub body: Option<String>
 }
 
-#[deriving(Show)]
+#[derive(Show)]
 pub struct Response {
     pub version: Version,
     pub status_code: isize,
