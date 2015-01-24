@@ -57,7 +57,7 @@ pub enum RequestType {
     PATCH
 }
 
-#[derive(Show,PartialEq,Clone)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum HeaderVal {
     List(Vec<String>),
     Val(String),
@@ -76,7 +76,7 @@ impl HeaderVal {
 
 
 
-#[derive(PartialEq, PartialOrd, Show)]
+#[derive(PartialEq, PartialOrd, Debug)]
 pub enum Version {
     Http09,
     Http10,
@@ -84,7 +84,7 @@ pub enum Version {
     Http20
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Request {
     pub method: RequestType,
     pub version: Version,
@@ -93,7 +93,7 @@ pub struct Request {
     pub body: Option<String>
 }
 
-#[derive(Show)]
+#[derive(Debug)]
 pub struct Response {
     pub version: Version,
     pub status_code: isize,

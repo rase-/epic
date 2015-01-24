@@ -47,7 +47,7 @@ impl Parser for SPParser {
     }
 }
 
-#[derive(Show,PartialEq)]
+#[derive(Debug,PartialEq)]
 enum EOLParserState {
     Token,
     CR,
@@ -129,7 +129,7 @@ impl Parser for HeaderKeyParser {
     }
 }
 
-#[derive(Show,PartialEq,Clone)]
+#[derive(Debug,PartialEq,Clone)]
 enum HeaderValParserState {
     Token,
     TokenDelimeter,
