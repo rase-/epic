@@ -183,7 +183,7 @@ impl HeaderValParser {
                 COMMA => {
                     // TODO: consider other "standard" delimeters
                     self.state = HeaderValParserState::TokenDelimeter;
-                    let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+                    let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string();
                     self.buf.clear();
                     let new_val = match &self.header_val {
                         &HeaderVal::None => HeaderVal::Val(str),
@@ -207,8 +207,8 @@ impl HeaderValParser {
         }
 
         if self.buf.len() > 0 {
-            let val = HeaderVal::Val(String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string());
-            let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+            let val = HeaderVal::Val(String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string());
+            let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string();
             self.buf.clear();
             let new_val = match &self.header_val {
                 &HeaderVal::None => HeaderVal::Val(str),
