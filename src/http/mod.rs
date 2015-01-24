@@ -1,5 +1,3 @@
-use std::io::IoResult;
-use std::str::from_utf8;
 use std::collections::HashMap;
 
 use std::fmt;
@@ -9,7 +7,7 @@ use std::fmt::Formatter;
 
 pub mod parser;
 
-#[derive(Debug)]
+#[derive(Debug,Copy)]
 pub enum HTTPError {
     MethodParseError,
     ResourceParseError,
@@ -44,7 +42,7 @@ impl Display for HTTPError {
     }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug,PartialEq,Copy)]
 pub enum RequestType {
     GET,
     HEAD,
@@ -76,7 +74,7 @@ impl HeaderVal {
 
 
 
-#[derive(PartialEq, PartialOrd, Debug)]
+#[derive(PartialEq,PartialOrd,Debug,Copy)]
 pub enum Version {
     Http09,
     Http10,

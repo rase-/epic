@@ -2,8 +2,6 @@ extern crate epic;
 
 use std::io::{TcpListener, TcpStream};
 use std::io::{Acceptor, Listener};
-use std::str::from_utf8;
-use std::collections::HashMap;
 use std::thread::Thread;
 
 fn main() {

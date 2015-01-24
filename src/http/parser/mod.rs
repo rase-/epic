@@ -1,6 +1,4 @@
-use std::io::{TcpListener, TcpStream};
-use std::io::{Acceptor, Listener};
-use std::io::IoResult;
+use std::io::{TcpStream};
 use std::str::from_utf8;
 use std::collections::HashMap;
 
@@ -207,7 +205,6 @@ impl HeaderValParser {
         }
 
         if self.buf.len() > 0 {
-            let val = HeaderVal::Val(String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string());
             let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string();
             self.buf.clear();
             let new_val = match &self.header_val {
@@ -269,7 +266,7 @@ fn read_reason(stream: &mut TcpStream) -> Option<String> {
     let mut parser = EOLParser::new();
     match String::from_utf8(parser.read_req_component(stream)) {
         Ok(s) => Some(s),
-        Err(e) => None
+        Err(_) => None
     }
 }
 
@@ -277,7 +274,7 @@ fn read_resource(stream: &mut TcpStream) -> Option<String> {
     let mut parser = SPParser::new();
     match String::from_utf8(parser.read_req_component(stream)) {
         Ok(s) => Some(s),
-        Err(e) => None
+        Err(_) => None
     }
 }
 
@@ -379,7 +376,7 @@ pub fn read_request(stream: &mut TcpStream) -> Request {
             None => {
                 match headers.get("Transfer-Encoding") {
                     None => None,
-                    Some(v) => Some(read_body(stream, 4096))
+                    Some(_) => Some(read_body(stream, 4096))
                 }
             }
 
