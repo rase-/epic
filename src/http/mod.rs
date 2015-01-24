@@ -2,10 +2,15 @@ use std::io::IoResult;
 use std::str::from_utf8;
 use std::collections::HashMap;
 
+use std::fmt;
+use std::error::Error;
+use std::fmt::Display;
+use std::fmt::Formatter;
+
 pub mod parser;
 
-#[derive(Show)]
-pub enum Error {
+#[derive(Debug)]
+pub enum HTTPError {
     MethodParseError,
     ResourceParseError,
     VersionParseError,
@@ -15,7 +20,31 @@ pub enum Error {
     StatusReasonParseError
 }
 
-#[derive(Show, PartialEq, Clone)]
+impl Error for HTTPError {
+    fn description(&self) -> &str {
+        match *self {
+           HTTPError::MethodParseError => "MethodParseError",
+           HTTPError::ResourceParseError => "ResourceParseError" ,
+           HTTPError::VersionParseError => "VersionParseError",
+           HTTPError::MalformedHeaderLineError => "MalformedHeaderLineError",
+           HTTPError::BodyParsingError => "BodyParsingError",
+           HTTPError::StatusCodeParseError => "StatusCodeParseError",
+           HTTPError::StatusReasonParseError => "StatusReasonParseError"
+        }
+    }
+
+    fn cause(&self) -> Option<&Error> {
+        None
+    }
+}
+
+impl Display for HTTPError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.description().fmt(f)
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub enum RequestType {
     GET,
     HEAD,

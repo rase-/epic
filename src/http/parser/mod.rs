@@ -4,7 +4,7 @@ use std::io::IoResult;
 use std::str::from_utf8;
 use std::collections::HashMap;
 
-use http::{RequestType, HeaderVal, Version, Error, Request, Response};
+use http::{RequestType, HeaderVal, Version, HTTPError, Request, Response};
 
 // Tokens
 const CR: u8 = b'\r';
@@ -307,47 +307,47 @@ fn read_status_code(stream: &mut TcpStream) -> Option<isize> {
     }
 }
 
-fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), Error> {
+fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HTTPError> {
     let maybe_method = read_request_type(stream);
     let maybe_resource = read_resource(stream);
     let maybe_version = read_version(stream, &mut EOLParser::new());
 
     if maybe_method.is_none() {
-        return Err(Error::MethodParseError);
+        return Err(HTTPError::MethodParseError);
     }
 
     if maybe_resource.is_none() {
-        return Err(Error::ResourceParseError);
+        return Err(HTTPError::ResourceParseError);
     }
 
     if maybe_version.is_none() {
-        return Err(Error::VersionParseError);
+        return Err(HTTPError::VersionParseError);
     }
 
     return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
 }
 
-fn read_status_line(stream: &mut TcpStream) -> Result<(Version, isize, String), Error> {
+fn read_status_line(stream: &mut TcpStream) -> Result<(Version, isize, String), HTTPError> {
     let maybe_version = read_version(stream, &mut SPParser::new());
     let maybe_code = read_status_code(stream);
     let maybe_reason = read_reason(stream);
 
     if maybe_version.is_none() {
-        return Err(Error::VersionParseError);
+        return Err(HTTPError::VersionParseError);
     }
 
     if maybe_code.is_none() {
-        return Err(Error::StatusCodeParseError);
+        return Err(HTTPError::StatusCodeParseError);
     }
 
     if maybe_reason.is_none() {
-        return Err(Error::StatusReasonParseError);
+        return Err(HTTPError::StatusReasonParseError);
     }
 
     return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
 }
 
-fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, Error> {
+fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, HTTPError> {
     let mut key_parser = HeaderKeyParser::new();
     let mut val_parser = HeaderValParser::new();
 
