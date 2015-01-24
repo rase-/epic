@@ -1,10 +1,8 @@
-use std::io::{TcpListener, TcpStream};
-use std::io::{Acceptor, Listener};
-use std::io::IoResult;
+use std::io::{TcpStream};
 use std::str::from_utf8;
 use std::collections::HashMap;
 
-use http::{RequestType, HeaderVal, Version, Error, Request, Response};
+use http::{RequestType, HeaderVal, Version, HTTPError, Request, Response};
 
 // Tokens
 const CR: u8 = b'\r';
@@ -20,12 +18,12 @@ trait Parser {
 
 struct SPParser {
     buf: Vec<u8>,
-    max_token_len: uint
+    max_token_len: usize
 }
 
 impl SPParser {
     fn new() -> SPParser {
-        SPParser { buf: Vec::new(), max_token_len: 4096u }
+        SPParser { buf: Vec::new(), max_token_len: 4096us }
     }
 }
 
@@ -47,7 +45,7 @@ impl Parser for SPParser {
     }
 }
 
-#[deriving(Show,PartialEq)]
+#[derive(Debug,PartialEq)]
 enum EOLParserState {
     Token,
     CR,
@@ -56,13 +54,13 @@ enum EOLParserState {
 
 struct EOLParser {
     buf: Vec<u8>,
-    max_token_len: uint,
+    max_token_len: usize,
     state: EOLParserState
 }
 
 impl EOLParser {
     fn new() -> EOLParser {
-        EOLParser { buf: Vec::new(), max_token_len: 4096u, state: EOLParserState::Token }
+        EOLParser { buf: Vec::new(), max_token_len: 4096us, state: EOLParserState::Token }
     }
 }
 
@@ -96,12 +94,12 @@ impl Parser for EOLParser {
 
 struct HeaderKeyParser {
     buf: Vec<u8>,
-    max_token_len: uint
+    max_token_len: usize
 }
 
 impl HeaderKeyParser {
     fn new() -> HeaderKeyParser {
-        HeaderKeyParser { buf: Vec::new(), max_token_len: 4096u }
+        HeaderKeyParser { buf: Vec::new(), max_token_len: 4096us }
     }
 }
 
@@ -129,7 +127,7 @@ impl Parser for HeaderKeyParser {
     }
 }
 
-#[deriving(Show,PartialEq)]
+#[derive(Debug,PartialEq,Clone)]
 enum HeaderValParserState {
     Token,
     TokenDelimeter,
@@ -139,16 +137,17 @@ enum HeaderValParserState {
     LF
 }
 
+#[derive(Clone)]
 struct HeaderValParser {
     buf: Vec<u8>,
-    max_token_len: uint,
+    max_token_len: usize,
     header_val: HeaderVal,
     state: HeaderValParserState
 }
 
 impl HeaderValParser {
     fn new() -> HeaderValParser {
-        HeaderValParser { buf: Vec::new(), max_token_len: 4096u, state: HeaderValParserState::OptionalWhitespace, header_val: HeaderVal::None }
+        HeaderValParser { buf: Vec::new(), max_token_len: 4096us, state: HeaderValParserState::OptionalWhitespace, header_val: HeaderVal::None }
     }
 
     fn read_req_component(&mut self, stream: &mut TcpStream) -> HeaderVal {
@@ -182,7 +181,7 @@ impl HeaderValParser {
                 COMMA => {
                     // TODO: consider other "standard" delimeters
                     self.state = HeaderValParserState::TokenDelimeter;
-                    let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+                    let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string();
                     self.buf.clear();
                     let new_val = match &self.header_val {
                         &HeaderVal::None => HeaderVal::Val(str),
@@ -206,8 +205,7 @@ impl HeaderValParser {
         }
 
         if self.buf.len() > 0 {
-            let val = HeaderVal::Val(String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string());
-            let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).as_slice().trim().into_string();
+            let str = String::from_utf8(self.buf.clone()).unwrap_or(String::new()).trim().to_string();
             self.buf.clear();
             let new_val = match &self.header_val {
                 &HeaderVal::None => HeaderVal::Val(str),
@@ -223,11 +221,11 @@ impl HeaderValParser {
 
 struct BodyParser {
     buf: Vec<u8>,
-    body_len: uint
+    body_len: usize
 }
 
 impl BodyParser {
-    fn new(body_len: uint) -> BodyParser {
+    fn new(body_len: usize) -> BodyParser {
         BodyParser { buf: Vec::new(), body_len: body_len }
     }
 }
@@ -268,7 +266,7 @@ fn read_reason(stream: &mut TcpStream) -> Option<String> {
     let mut parser = EOLParser::new();
     match String::from_utf8(parser.read_req_component(stream)) {
         Ok(s) => Some(s),
-        Err(e) => None
+        Err(_) => None
     }
 }
 
@@ -276,7 +274,7 @@ fn read_resource(stream: &mut TcpStream) -> Option<String> {
     let mut parser = SPParser::new();
     match String::from_utf8(parser.read_req_component(stream)) {
         Ok(s) => Some(s),
-        Err(e) => None
+        Err(_) => None
     }
 }
 
@@ -291,9 +289,11 @@ fn read_version<T: Parser>(stream: &mut TcpStream, parser: &mut T) -> Option<Ver
     };
 }
 
-fn read_status_code(stream: &mut TcpStream) -> Option<int> {
+fn read_status_code(stream: &mut TcpStream) -> Option<isize> {
     let mut parser = SPParser::new();
-    match from_str::<int>(String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new()).as_slice()) {
+    let status_code_str = String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new());
+    let status_code = status_code_str.parse::<isize>();
+    match status_code {
         Some(num) => {
             match num.to_string().len() {
                 3 => Some(num),
@@ -304,47 +304,47 @@ fn read_status_code(stream: &mut TcpStream) -> Option<int> {
     }
 }
 
-fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), Error> {
+fn read_req_line(stream: &mut TcpStream) -> Result<(RequestType, String, Version), HTTPError> {
     let maybe_method = read_request_type(stream);
     let maybe_resource = read_resource(stream);
     let maybe_version = read_version(stream, &mut EOLParser::new());
 
     if maybe_method.is_none() {
-        return Err(Error::MethodParseError);
+        return Err(HTTPError::MethodParseError);
     }
 
     if maybe_resource.is_none() {
-        return Err(Error::ResourceParseError);
+        return Err(HTTPError::ResourceParseError);
     }
 
     if maybe_version.is_none() {
-        return Err(Error::VersionParseError);
+        return Err(HTTPError::VersionParseError);
     }
 
     return Ok((maybe_method.unwrap(), maybe_resource.unwrap(), maybe_version.unwrap()));
 }
 
-fn read_status_line(stream: &mut TcpStream) -> Result<(Version, int, String), Error> {
+fn read_status_line(stream: &mut TcpStream) -> Result<(Version, isize, String), HTTPError> {
     let maybe_version = read_version(stream, &mut SPParser::new());
     let maybe_code = read_status_code(stream);
     let maybe_reason = read_reason(stream);
 
     if maybe_version.is_none() {
-        return Err(Error::VersionParseError);
+        return Err(HTTPError::VersionParseError);
     }
 
     if maybe_code.is_none() {
-        return Err(Error::StatusCodeParseError);
+        return Err(HTTPError::StatusCodeParseError);
     }
 
     if maybe_reason.is_none() {
-        return Err(Error::StatusReasonParseError);
+        return Err(HTTPError::StatusReasonParseError);
     }
 
     return Ok((maybe_version.unwrap(), maybe_code.unwrap(), maybe_reason.unwrap()));
 }
 
-fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, Error> {
+fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, HTTPError> {
     let mut key_parser = HeaderKeyParser::new();
     let mut val_parser = HeaderValParser::new();
 
@@ -360,7 +360,7 @@ fn read_headers(stream: &mut TcpStream) -> Result<HashMap<String, HeaderVal>, Er
     return Ok(headers);
 }
 
-fn read_body(stream: &mut TcpStream, len: uint) -> String {
+fn read_body(stream: &mut TcpStream, len: usize) -> String {
     let mut parser = BodyParser::new(len);
     String::from_utf8(parser.read_req_component(stream)).unwrap_or(String::new())
 }
@@ -368,7 +368,7 @@ fn read_body(stream: &mut TcpStream, len: uint) -> String {
 pub fn read_request(stream: &mut TcpStream) -> Request {
     let (method, resource, version) = read_req_line(stream).unwrap();
     let headers = read_headers(stream).unwrap();
-  
+
     let body = if method == RequestType::HEAD {
         None
     } else {
@@ -376,14 +376,15 @@ pub fn read_request(stream: &mut TcpStream) -> Request {
             None => {
                 match headers.get("Transfer-Encoding") {
                     None => None,
-                    Some(v) => Some(read_body(stream, 4096))
+                    Some(_) => Some(read_body(stream, 4096))
                 }
             }
 
             Some(len_field) => {
                 match len_field {
                     &HeaderVal::Val(ref len_str) => {
-                        match from_str::<uint>(len_str.to_string().as_slice()) {
+                        let len = len_str.to_string().as_slice().parse::<usize>();
+                        match len {
                             None => None,
                             Some(len) => Some(read_body(stream, len))
                         }
@@ -425,7 +426,8 @@ pub fn read_response(stream: &mut TcpStream) -> Response {
                     Some(len_field) => {
                         match len_field {
                             &HeaderVal::Val(ref len_str) => {
-                                match from_str::<uint>(len_str.to_string().as_slice()) {
+                                let len = len_str.to_string().as_slice().parse::<usize>();
+                                match len {
                                     None => None,
                                     Some(len) => Some(read_body(stream, len))
                                 }
