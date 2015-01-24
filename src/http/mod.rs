@@ -67,7 +67,7 @@ pub struct Request {
 #[deriving(Show)]
 pub struct Response {
     pub version: Version,
-    pub status_code: int,
+    pub status_code: isize,
     pub reason: String,
     pub headers: HashMap<String, HeaderVal>,
     pub body: Option<String>
